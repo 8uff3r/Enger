@@ -155,6 +155,9 @@ func (g *Game) MoveCtrlPoint(target *ebiten.Image, p *draggedCtrlPoint, x, y int
 	g.ctrlPoints[p.index][0] = x
 	g.ctrlPoints[p.index][1] = y
 	// fmt.Printf("%v %v %v", x, y, p.index)
+	if len(g.ctrlPoints) < 4 {
+		return
+	}
 	g.spline.SetControlPointVec2At(p.index, ts.NewVec2(float64(x), float64(y)))
 }
 
@@ -199,7 +202,7 @@ func (g *Game) drawSpline(target *ebiten.Image, pts []float64) {
 		g.vs[i].SrcX = 0
 		g.vs[i].SrcY = 0
 		g.vs[i].ColorR = .5
-		g.vs[i].ColorG = 1
+		g.vs[i].ColorG = .5
 		g.vs[i].ColorB = 1
 		g.vs[i].ColorA = 1
 	}
