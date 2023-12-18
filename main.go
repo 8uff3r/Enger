@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
-	"image"
+	img "image"
 	"image/color"
 	"log"
 	"math"
 
+	"github.com/ebitenui/ebitenui"
+	"github.com/ebitenui/ebitenui/image"
+	"github.com/ebitenui/ebitenui/widget"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -26,26 +29,29 @@ var (
 
 	// whiteSubImage is an internal sub image of whiteImage.
 	// Use whiteSubImage at DrawTriangles instead of whiteImage in order to avoid bleeding edges.
-	whiteSubImage = whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
+	whiteSubImage = whiteImage.SubImage(img.Rect(1, 1, 2, 2)).(*ebiten.Image)
 )
 
+func init() {
+	whiteImage.Fill(color.White)
+}
+
 const (
-	screenWidth  = 640
+	screenWidth  = 960
 	screenHeight = 680
 )
 
 type Game struct {
 	spline         ts.BSpline
-	scene          *ebiten.Image
 	drgPoint       *draggedCtrlPoint
 	vertices       []ebiten.Vertex
 	indices        []uint16
 	ctrlPoints     [][2]int
 	pastCtrlPoints [][2]int
+	ui             *ebitenui.UI
 	vs             []ebiten.Vertex
 	is             []uint16
 	counter        int
-	aa             bool
 }
 type draggedCtrlPoint struct {
 	index      int
@@ -71,9 +77,7 @@ func In(a, b, x, y, r int) bool {
 
 func (g *Game) Update() error {
 	// g.counter++
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		g.aa = !g.aa
-	}
+	g.ui.Update()
 
 	return nil
 }
@@ -81,12 +85,17 @@ func (g *Game) Update() error {
 var curveScene *ebiten.Image
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.DrawImage(curveScene, &ebiten.DrawImageOptions{})
+	// g.ui.Draw(curveScene)
+	// screen.DrawImage(curveScene, &ebiten.DrawImageOptions{})
 	target := curveScene
+	// g.ui.Draw(target)
 
 	g.pastCtrlPoints = g.ctrlPoints
 	x, y := ebiten.CursorPosition()
 	isPressed := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
+	if x > .75*screenWidth {
+		isPressed = false
+	}
 	if isPressed {
 		for k, v := range g.ctrlPoints {
 			if In(v[0], v[1], x, y, 6) {
@@ -101,10 +110,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 	}
+	g.ui.Draw(screen)
 	if isPressed {
 		return
 	}
 	isReleased := inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
+	if x > .75*screenWidth {
+		isReleased = false
+	}
 	if isReleased {
 		if g.drgPoint != nil {
 			g.drgPoint = nil
@@ -134,6 +147,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 	g.drawSpline(target, g.spline.Sample())
+	g.ui.Draw(screen)
 
 	msg := fmt.Sprintf(`Press A to switch anti-aliasing.
 Press C to switch to draw the center lines
@@ -167,7 +181,7 @@ func (g *Game) DrawNewSpline(target *ebiten.Image, inpts [][2]int) {
 		flatInpts = append(flatInpts, []float64{float64(a[0]), float64(a[1])}...)
 	}
 	target.DrawTriangles(g.vs, g.is, whiteSubImage, &ebiten.DrawTrianglesOptions{
-		AntiAlias: g.aa,
+		AntiAlias: true,
 	})
 	if len(inpts) < 4 {
 		return
@@ -207,7 +221,7 @@ func (g *Game) drawSpline(target *ebiten.Image, pts []float64) {
 		g.vs[i].ColorA = 1
 	}
 	target.DrawTriangles(g.vs, g.is, whiteSubImage, &ebiten.DrawTrianglesOptions{
-		AntiAlias: g.aa,
+		AntiAlias: true,
 	})
 }
 
@@ -240,7 +254,7 @@ func (g *Game) drawLineByPoints(target *ebiten.Image, input [][2]int) {
 		vs[i].ColorA = .3
 	}
 	target.DrawTriangles(vs, is, whiteSubImage, &ebiten.DrawTrianglesOptions{
-		AntiAlias: g.aa,
+		AntiAlias: true,
 	})
 
 }
@@ -257,19 +271,96 @@ func (g *Game) clickPos() (int, int) {
 	return 0, 0
 }
 func NewGame() *Game {
+	rootContainer := widget.NewContainer(
+		// the container will use a plain color as its background
+		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.NRGBA{0x13, 0x1a, 0x22, 0xff})),
+		// the container will use an anchor layout to layout its single child widget
+		widget.ContainerOpts.Layout(widget.NewGridLayout(
+			//Define number of columns in the grid
+			widget.GridLayoutOpts.Columns(2),
+			//Define how much padding to inset the child content
+			widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(0)),
+			//Define how far apart the rows and columns should be
+			widget.GridLayoutOpts.Spacing(20, 10),
+			//Define how to stretch the rows and columns. Note it is required to
+			//specify the Stretch for each row and column.
+			widget.GridLayoutOpts.Stretch([]bool{true, false}, []bool{true, true}),
+		)),
+	)
+	curveScene = ebiten.NewImage(screenWidth*.75, screenHeight)
+	curvesContainer := widget.NewContainer(
+		widget.ContainerOpts.BackgroundImage(image.NewNineSlice(curveScene, [3]int{screenWidth * .75, 0, 0}, [3]int{screenHeight, 0, 0})),
+		widget.ContainerOpts.WidgetOpts(
+			widget.WidgetOpts.MinSize(100, 600),
+		),
+	)
+	rootContainer.AddChild(curvesContainer)
+
+	rightContainer := widget.NewContainer(
+		widget.ContainerOpts.WidgetOpts(
+			widget.WidgetOpts.MinSize(100, 600),
+		),
+		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.NRGBA{200, 0, 0, 0})),
+		// the container will use an anchor layout to layout its single child widget
+		widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+	)
+
+	idle, err := loadImageNineSlice("assets/button_idle.png", 12, 0)
+	if err != nil {
+		println(err)
+	}
+	hover, err := loadImageNineSlice("assets/button_hover.png", 12, 0)
+	buttonImage := &widget.ButtonImage{
+		Idle:  idle,
+		Hover: hover,
+		// Pressed: pressed,
+	}
+	face, _ := loadFont(12)
+	conToBezierBut := widget.NewButton(
+		// set general widget options
+		widget.ButtonOpts.WidgetOpts(
+			// instruct the container's anchor layout to center the button both horizontally and vertically
+			widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+				HorizontalPosition: widget.AnchorLayoutPositionCenter,
+				VerticalPosition:   widget.AnchorLayoutPositionCenter,
+			}),
+		),
+
+		widget.ButtonOpts.Image(buttonImage),
+		widget.ButtonOpts.Text("Convert to bezier curves", face, &widget.ButtonTextColor{
+			Idle: color.NRGBA{0xdf, 0xf4, 0xff, 0xff},
+		}),
+
+		// specify that the button's text needs some padding for correct display
+		widget.ButtonOpts.TextPadding(widget.Insets{
+			Left:   30,
+			Right:  30,
+			Top:    5,
+			Bottom: 5,
+		}),
+		// add a handler that reacts to clicking the button
+		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+			println("button clicked")
+		}),
+	)
+	rightContainer.AddChild(conToBezierBut)
+	rootContainer.AddChild(rightContainer)
+
+	ui := ebitenui.UI{
+		Container: rootContainer,
+	}
+	// rootContainer.AddChild(image.NewNineSlice(curveScene,)
 	g := &Game{
-		scene: ebiten.NewImage(500, 500),
+		ui:       &ui,
+		drgPoint: nil,
 	}
 	return g
 }
 
 func main() {
-	var g Game
-	g.drgPoint = nil
-	curveScene = ebiten.NewImage(640, 680)
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Lines (Ebitengine Demo)")
-	if err := ebiten.RunGame(&g); err != nil {
+	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
 	}
 }
