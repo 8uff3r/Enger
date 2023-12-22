@@ -6,6 +6,7 @@ import (
 	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goregular"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -78,4 +79,18 @@ func loadImageNineSlice(path string, centerWidth int, centerHeight int) (*image.
 			[3]int{50, 50, 50},
 			[3]int{8, 8, 8}),
 		nil
+}
+
+func hexToColor(h string) color.Color {
+	u, err := strconv.ParseUint(h, 16, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	return color.NRGBA{
+		R: uint8(u & 0xff0000 >> 16),
+		G: uint8(u & 0xff00 >> 8),
+		B: uint8(u & 0xff),
+		A: 255,
+	}
 }

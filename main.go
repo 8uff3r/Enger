@@ -52,6 +52,7 @@ type Game struct {
 	vs             []ebiten.Vertex
 	is             []uint16
 	counter        int
+	forceRerender  bool
 }
 type draggedCtrlPoint struct {
 	index      int
@@ -90,6 +91,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	target := curveScene
 	// g.ui.Draw(target)
 
+	if g.spline != nil {
+		g.ctrlPoints = [][2]int{}
+
+		currCtrl := g.spline.GetControlPoints()
+		for k := range currCtrl {
+			if k%2 == 1 {
+				continue
+			}
+			g.ctrlPoints = append(g.ctrlPoints, [2]int{int(currCtrl[k]), int(currCtrl[k+1])})
+		}
+	}
 	g.pastCtrlPoints = g.ctrlPoints
 	x, y := ebiten.CursorPosition()
 	isPressed := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
@@ -110,8 +122,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 	}
-	g.ui.Draw(screen)
 	if isPressed {
+		g.ui.Draw(screen)
 		return
 	}
 	isReleased := inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
@@ -120,20 +132,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	if isReleased {
 		if g.drgPoint != nil {
+			g.ui.Draw(screen)
 			g.drgPoint = nil
 			return
 		}
 	}
-	reRender := 0
+	reRender := g.forceRerender
 	if g.drgPoint != nil {
 		g.MoveCtrlPoint(target, g.drgPoint, x, y)
-		reRender = 1
+		reRender = true
 	} else if x != 0 && y != 0 && isReleased {
 		g.ctrlPoints = append(g.ctrlPoints, [2]int{x, y})
 		g.DrawNewSpline(target, g.ctrlPoints)
-		reRender = 1
+		reRender = true
 	}
-	if reRender == 0 {
+	if !reRender {
+		g.ui.Draw(screen)
 		return
 	}
 
@@ -300,22 +314,50 @@ func NewGame() *Game {
 		widget.ContainerOpts.WidgetOpts(
 			widget.WidgetOpts.MinSize(100, 600),
 		),
-		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.NRGBA{200, 0, 0, 0})),
+		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.NRGBA{0x40, 0x1a, 0x22, 0xff})),
 		// the container will use an anchor layout to layout its single child widget
 		widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
 	)
 
-	idle, err := loadImageNineSlice("assets/button_idle.png", 12, 0)
+	idle, err := loadImageNineSlice("assets/button-idle.png", 12, 0)
 	if err != nil {
-		println(err)
+		return nil
 	}
-	hover, err := loadImageNineSlice("assets/button_hover.png", 12, 0)
+
+	hover, err := loadImageNineSlice("assets/button-hover.png", 12, 0)
+	if err != nil {
+		return nil
+	}
+	pressed_hover, err := loadImageNineSlice("assets/button-selected-hover.png", 12, 0)
+	if err != nil {
+		return nil
+	}
+	pressed, err := loadImageNineSlice("assets/button-pressed.png", 12, 0)
+	if err != nil {
+		return nil
+	}
+	disabled, err := loadImageNineSlice("assets/button-disabled.png", 12, 0)
+	if err != nil {
+		return nil
+	}
 	buttonImage := &widget.ButtonImage{
-		Idle:  idle,
-		Hover: hover,
-		// Pressed: pressed,
+		Idle:         idle,
+		Hover:        hover,
+		Pressed:      pressed,
+		PressedHover: pressed_hover,
+		Disabled:     disabled,
 	}
 	face, _ := loadFont(12)
+
+	ui := ebitenui.UI{
+		Container: rootContainer,
+	}
+	// rootContainer.AddChild(image.NewNineSlice(curveScene,)
+	g := &Game{
+		ui:            &ui,
+		drgPoint:      nil,
+		forceRerender: false,
+	}
 	conToBezierBut := widget.NewButton(
 		// set general widget options
 		widget.ButtonOpts.WidgetOpts(
@@ -330,6 +372,10 @@ func NewGame() *Game {
 		widget.ButtonOpts.Text("Convert to bezier curves", face, &widget.ButtonTextColor{
 			Idle: color.NRGBA{0xdf, 0xf4, 0xff, 0xff},
 		}),
+		widget.ButtonOpts.GraphicPadding(widget.Insets{
+			Left:  30,
+			Right: 30,
+		}),
 
 		// specify that the button's text needs some padding for correct display
 		widget.ButtonOpts.TextPadding(widget.Insets{
@@ -340,20 +386,15 @@ func NewGame() *Game {
 		}),
 		// add a handler that reacts to clicking the button
 		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
-			println("button clicked")
+			if g.spline != nil {
+				g.spline = g.spline.ToBeziers()
+				g.forceRerender = true
+			}
 		}),
 	)
 	rightContainer.AddChild(conToBezierBut)
 	rootContainer.AddChild(rightContainer)
 
-	ui := ebitenui.UI{
-		Container: rootContainer,
-	}
-	// rootContainer.AddChild(image.NewNineSlice(curveScene,)
-	g := &Game{
-		ui:       &ui,
-		drgPoint: nil,
-	}
 	return g
 }
 
