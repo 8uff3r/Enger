@@ -1,15 +1,19 @@
 package main
 
 import (
+	"strconv"
+
 	"github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
-	"strconv"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
+
+	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"image/color"
 )
 
 const (
@@ -38,8 +42,20 @@ func loadButtonImage() (*widget.ButtonImage, error) {
 	}, nil
 }
 
+func loadFontOld(size float64) (font.Face, error) {
+	ttfFont, err := truetype.Parse(goregular.TTF)
+	if err != nil {
+		return nil, err
+	}
+
+	return truetype.NewFace(ttfFont, &truetype.Options{
+		Size:    size,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	}), nil
+}
 func loadFonts() (*fonts, error) {
-	fontFace, err := loadFont(fontFaceRegular, 20)
+	fontFace, err := loadFont(fontFaceRegular, 12)
 	if err != nil {
 		return nil, err
 	}
@@ -69,19 +85,25 @@ func loadFonts() (*fonts, error) {
 func loadFont(path string, size float64) (font.Face, error) {
 	fontData, err := embeddedAssets.ReadFile(path)
 	if err != nil {
+		println("Error file Read")
 		return nil, err
 	}
 
-	ttfFont, err := truetype.Parse(fontData)
+	ttfFont, err := opentype.Parse(fontData)
 	if err != nil {
+		println("Error file parse")
 		return nil, err
 	}
 
-	return truetype.NewFace(ttfFont, &truetype.Options{
+	face, err := opentype.NewFace(ttfFont, &opentype.FaceOptions{
 		Size:    size,
 		DPI:     72,
 		Hinting: font.HintingFull,
-	}), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return face, nil
 }
 func newImageFromFile(path string) (*ebiten.Image, error) {
 	f, err := embeddedAssets.Open(path)

@@ -59,8 +59,8 @@ func NewButton(txt string, handler func()) *widget.Button {
 		// set general widget options
 		widget.ButtonOpts.WidgetOpts(
 			// instruct the container's anchor layout to center the button both horizontally and vertically
-			widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
-				HorizontalPosition: widget.AnchorLayoutPositionCenter,
+			widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+				Position: widget.RowLayoutPositionStart,
 			}),
 		),
 
@@ -110,7 +110,7 @@ func NewSlider(min, max, step int, handler func(args *widget.SliderChangedEventA
 		widget.SliderOpts.Images(
 			// Set the track images
 			&widget.SliderTrackImage{
-				Idle:  image.NewNineSliceColor(color.NRGBA{100, 100, 100, 255}),
+				Idle:  image.NewNineSliceColor(color.NRGBA{200, 200, 200, 255}),
 				Hover: image.NewNineSliceColor(color.NRGBA{100, 100, 100, 255}),
 			},
 			// Set the handle images
@@ -139,15 +139,19 @@ func NewSlider(min, max, step int, handler func(args *widget.SliderChangedEventA
 }
 
 func NewLabel(text string) *widget.Label {
-	fonts, err := loadFonts()
-	if err != nil {
-		return nil
-	}
+	// fonts, err := loadFonts()
+	// if err != nil {
+	// 	return nil
+	// }
+	f, _ := loadFont(fontFaceBold, 12)
 	t := widget.NewLabel(
-		widget.LabelOpts.TextOpts(widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-			Position: widget.RowLayoutPositionCenter,
-		}))),
-		widget.LabelOpts.Text(text, fonts.face, &widget.LabelColor{
+		widget.LabelOpts.TextOpts(
+			widget.TextOpts.WidgetOpts(
+				widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
+					HorizontalPosition: widget.AnchorLayoutPositionCenter,
+				}),
+			)),
+		widget.LabelOpts.Text(text, f, &widget.LabelColor{
 			Idle:     hexToColor(labelIdleColor),
 			Disabled: hexToColor(labelDisabledColor),
 		}),

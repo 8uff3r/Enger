@@ -11,7 +11,6 @@ import (
 	"github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	ts "github.com/tinyspline/go"
@@ -42,19 +41,19 @@ const (
 )
 
 type Game struct {
-	spline         ts.BSpline
-	drgPoint       *draggedCtrlPoint
-	ui             *ebitenui.UI
-	uPoint         *Point
-	pastCtrlPoints [][2]int
-	ctrlPoints     [][2]int
-	indices        []uint16
-	vs             []ebiten.Vertex
-	is             []uint16
-	extraPts       []float64
-	vertices       []ebiten.Vertex
-	counter        int
-	forceRerender  bool
+	drgPoint      *draggedCtrlPoint
+	ui            *ebitenui.UI
+	extraPts      []float64
+	spline        Spline
+	counter       int
+	forceRerender bool
+}
+type Spline struct {
+	curve      ts.BSpline
+	uPoint     *Point
+	ctrlPoints [][2]int
+	u          float64
+	re         bool
 }
 type Point struct {
 	x  float64
@@ -83,6 +82,17 @@ func In(a, b, x, y, r int) bool {
 	return math.Sqrt(float64(IntPow(x-a, 2)+IntPow((y-b), 2)))-float64(r)-2 <= 0
 }
 
+func FlatFloatTo2dInt(s []float64) [][2]int {
+	var result [][2]int
+	for k := range s {
+		if k%2 == 1 {
+			continue
+		}
+		result = append(result, [2]int{int(s[k]), int(s[k+1])})
+	}
+	return result
+}
+
 func (g *Game) Update() error {
 	// g.counter++
 	g.ui.Update()
@@ -93,30 +103,24 @@ func (g *Game) Update() error {
 var curveScene *ebiten.Image
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	// g.ui.Draw(curveScene)
-	// screen.DrawImage(curveScene, &ebiten.DrawImageOptions{})
+	defer g.ui.Draw(screen)
 	target := curveScene
-	// g.ui.Draw(target)
 
-	if g.spline != nil {
-		g.ctrlPoints = [][2]int{}
-
-		currCtrl := g.spline.GetControlPoints()
-		for k := range currCtrl {
-			if k%2 == 1 {
-				continue
-			}
-			g.ctrlPoints = append(g.ctrlPoints, [2]int{int(currCtrl[k]), int(currCtrl[k+1])})
-		}
-	}
-	g.pastCtrlPoints = g.ctrlPoints
-	x, y := ebiten.CursorPosition()
 	isPressed := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
+	isReleased := inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
+	x, y := ebiten.CursorPosition()
 	if x > .75*screenWidth {
+		isReleased = false
 		isPressed = false
 	}
+
+	if g.spline.curve != nil {
+		g.spline.ctrlPoints = FlatFloatTo2dInt(g.spline.curve.GetControlPoints())
+	}
+
+	g.spline.re = false
 	if isPressed {
-		for k, v := range g.ctrlPoints {
+		for k, v := range g.spline.ctrlPoints {
 			if In(v[0], v[1], x, y, 6) {
 				g.drgPoint = &draggedCtrlPoint{
 					index:      k,
@@ -128,78 +132,71 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				break
 			}
 		}
-	}
-	if isPressed {
-		g.ui.Draw(screen)
 		return
-	}
-	isReleased := inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
-	if x > .75*screenWidth {
-		isReleased = false
 	}
 	if isReleased {
 		if g.drgPoint != nil {
-			g.ui.Draw(screen)
 			g.drgPoint = nil
 			return
 		}
 	}
 	reRender := g.forceRerender
+	g.forceRerender = false
 	if g.drgPoint != nil {
-		g.MoveCtrlPoint(target, g.drgPoint, x, y)
+		g.spline.MoveCtrlPoint(g.drgPoint, x, y)
 		reRender = true
 	} else if x != 0 && y != 0 && isReleased {
-		g.ctrlPoints = append(g.ctrlPoints, [2]int{x, y})
-		if g.spline != nil {
-			knts := g.spline.GetKnots()
-			var res []int
-			for k, v := range knts {
-				if k < g.spline.GetDegree() || k > len(knts)-g.spline.GetDegree()-1 {
-					continue
-				}
-				res = append(res, int(v*float64((len(knts)-2*g.spline.GetDegree())-1)))
-
-			}
-
-			// res := g.spline.ToBeziers()
-			// res, _ := GetPointAt(g.spline, .1)
-			// g.extraPts = append(g.extraPts, pts...)
-			pts, _ := GetPointAt(g.spline, 0.2*knts[5])
-			fmt.Printf("pts: %v\n", pts)
-			SetPoint(&g.uPoint, pts[0], pts[1])
-
-			// g.extraPts = res
-			fmt.Printf("%v\n", g.uPoint.GetPoint())
-		}
-		g.DrawNewSpline(target, g.ctrlPoints)
+		g.spline.ctrlPoints = append(g.spline.ctrlPoints, [2]int{x, y})
+		g.DrawNewSpline(target, g.spline.ctrlPoints)
 		reRender = true
 	}
 	if !reRender {
-		g.ui.Draw(screen)
 		return
 	}
+	println("RERE")
 
 	curveScene.Clear()
 	g.AddPointByFlatList(target, g.extraPts, 9, color.RGBA{G: 255})
 
-	for _, v := range g.ctrlPoints {
+	for _, v := range g.spline.ctrlPoints {
 		g.AddPointAt(target, v[0], v[1], 6, color.White)
 	}
-	g.drawLineByPoints(target, g.ctrlPoints)
-	if len(g.ctrlPoints) < 4 {
+	g.drawLineByPoints(target, g.spline.ctrlPoints)
+	if len(g.spline.ctrlPoints) < 4 {
 		return
 	}
-	ptsNum := 100 * (len(g.ctrlPoints) / 5)
-	g.drawSpline(target, g.spline.Sample(ptsNum))
-	g.ui.Draw(screen)
+	ptsNum := 100 * (len(g.spline.ctrlPoints) / 5)
+	g.drawSpline(target, g.spline.curve.Sample(ptsNum))
 
-	msg := fmt.Sprintf(`Press A to switch anti-aliasing.
-Press C to switch to draw the center lines
-X: %d, Y: %d
-%v
-		%v
-`, x, y, (g.ctrlPoints), g.drgPoint)
-	ebitenutil.DebugPrint(target, msg)
+	if g.spline.curve != nil {
+		knts := g.spline.curve.GetKnots()
+		var res []int
+		for k, v := range knts {
+			if k < g.spline.curve.GetDegree() || k > len(knts)-g.spline.curve.GetDegree()-1 {
+				continue
+			}
+			res = append(res, int(v*float64((len(knts)-2*g.spline.curve.GetDegree())-1)))
+		}
+		pts, _ := GetPointAt(g.spline.curve, g.spline.u*knts[5])
+		SetPoint(&g.spline.uPoint, pts[0], pts[1])
+		g.AddPointAt(target, int(pts[0]), int(pts[1]), 12, color.RGBA{G: 255})
+		fmt.Printf("%v\n", g.spline.uPoint.GetPoint())
+	}
+	if g.spline.uPoint != nil {
+		g.spline.uPoint.ch = false
+		g.AddPointAt(target, int(g.spline.uPoint.x), int(g.spline.uPoint.y), 10, color.RGBA{B: 255})
+	}
+	//	msg := fmt.Sprintf(`Press A to switch anti-aliasing.
+	//
+	// Press C to switch to draw the center lines
+	// X: %d, Y: %d
+	// %v
+	//
+	//	%v
+	//
+	// `, x, y, (g.spline.ctrlPoints), g.drgPoint)
+	//
+	//	ebitenutil.DebugPrint(target, msg)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -217,17 +214,16 @@ func SetPoint(p **Point, x, y float64) {
 	}
 }
 
-func (g *Game) MoveCtrlPoint(target *ebiten.Image, p *draggedCtrlPoint, x, y int) {
+func (s *Spline) MoveCtrlPoint(p *draggedCtrlPoint, x, y int) {
 	if x == 0 && y == 0 {
 		return
 	}
-	g.ctrlPoints[p.index][0] = x
-	g.ctrlPoints[p.index][1] = y
-	// fmt.Printf("%v %v %v", x, y, p.index)
-	if len(g.ctrlPoints) < 4 {
+	s.ctrlPoints[p.index][0] = x
+	s.ctrlPoints[p.index][1] = y
+	if len(s.ctrlPoints) < 4 {
 		return
 	}
-	g.spline.SetControlPointVec2At(p.index, ts.NewVec2(float64(x), float64(y)))
+	s.curve.SetControlPointVec2At(p.index, ts.NewVec2(float64(x), float64(y)))
 }
 
 func (g *Game) DrawNewSpline(target *ebiten.Image, inpts [][2]int) {
@@ -235,30 +231,21 @@ func (g *Game) DrawNewSpline(target *ebiten.Image, inpts [][2]int) {
 	for _, a := range inpts {
 		flatInpts = append(flatInpts, []float64{float64(a[0]), float64(a[1])}...)
 	}
-	target.DrawTriangles(g.vs, g.is, whiteSubImage, &ebiten.DrawTrianglesOptions{
-		AntiAlias: true,
-	})
 	if len(inpts) < 4 {
 		return
 	}
-	g.spline = ts.NewBSpline(len(inpts), 2, 3)
-
-	g.spline.SetControlPoints(flatInpts)
-
-	// pts := g.spline.Sample(100 * (len(inpts) / 5))
-	// pts := spline.Sample()
-	// g.drawLineByPoints(target, flatInpts)
-	// g.drawSpline(target, pts)
+	g.spline.curve = ts.NewBSpline(len(inpts), 2, 3)
+	g.spline.curve.SetControlPoints(flatInpts)
 }
 
 func (g *Game) drawSpline(target *ebiten.Image, pts []float64) {
 	var path vector.Path
-	n := make([]struct{}, int(len(pts)/g.spline.GetDimension()-1))
+	n := make([]struct{}, int(len(pts)/g.spline.curve.GetDimension()-1))
 	for k := range n {
-		p0x := pts[k*g.spline.GetDimension()]
-		p0y := pts[k*g.spline.GetDimension()+1]
-		p1x := pts[(k+1)*g.spline.GetDimension()]
-		p1y := pts[(k+1)*g.spline.GetDimension()+1]
+		p0x := pts[k*g.spline.curve.GetDimension()]
+		p0y := pts[k*g.spline.curve.GetDimension()+1]
+		p1x := pts[(k+1)*g.spline.curve.GetDimension()]
+		p1y := pts[(k+1)*g.spline.curve.GetDimension()+1]
 		if k == 0 {
 			path.MoveTo(float32(p0x), float32(p0y))
 		}
@@ -266,16 +253,19 @@ func (g *Game) drawSpline(target *ebiten.Image, pts []float64) {
 	}
 	op := &vector.StrokeOptions{}
 	op.Width = float32(3)
-	g.vs, g.is = path.AppendVerticesAndIndicesForStroke(g.vertices[:0], g.indices[:0], op)
-	for i := range g.vs {
-		g.vs[i].SrcX = 0
-		g.vs[i].SrcY = 0
-		g.vs[i].ColorR = .5
-		g.vs[i].ColorG = .5
-		g.vs[i].ColorB = 1
-		g.vs[i].ColorA = 1
+
+	var vertices []ebiten.Vertex
+	var indices []uint16
+	vs, is := path.AppendVerticesAndIndicesForStroke(vertices[:0], indices[:0], op)
+	for i := range vs {
+		vs[i].SrcX = 0
+		vs[i].SrcY = 0
+		vs[i].ColorR = .5
+		vs[i].ColorG = .5
+		vs[i].ColorB = 1
+		vs[i].ColorA = 1
 	}
-	target.DrawTriangles(g.vs, g.is, whiteSubImage, &ebiten.DrawTrianglesOptions{
+	target.DrawTriangles(vs, is, whiteSubImage, &ebiten.DrawTrianglesOptions{
 		AntiAlias: true,
 	})
 }
@@ -299,7 +289,10 @@ func (g *Game) drawLineByPoints(target *ebiten.Image, input [][2]int) {
 	}
 	op := &vector.StrokeOptions{}
 	op.Width = float32(6)
-	vs, is := path.AppendVerticesAndIndicesForStroke(g.vertices[:0], g.indices[:0], op)
+
+	var vertices []ebiten.Vertex
+	var indices []uint16
+	vs, is := path.AppendVerticesAndIndicesForStroke(vertices[:0], indices[:0], op)
 	for i := range vs {
 		vs[i].SrcX = 0
 		vs[i].SrcY = 0
@@ -367,40 +360,38 @@ func NewGame() *Game {
 		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.NRGBA{0x40, 0x1a, 0x22, 0xff})),
 		// the container will use an anchor layout to layout its single child widget
 
-		widget.ContainerOpts.Layout(widget.NewAnchorLayout(
-			widget.AnchorLayoutOpts.Padding(widget.Insets{
-				Left:   10,
-				Right:  10,
-				Top:    10,
-				Bottom: 10,
-			}),
+		widget.ContainerOpts.Layout(widget.NewRowLayout(
+			widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+			widget.RowLayoutOpts.Padding(widget.NewInsetsSimple(10)),
 		)),
 	)
 
 	ui := ebitenui.UI{
 		Container: rootContainer,
 	}
-	// rootContainer.AddChild(image.NewNineSlice(curveScene,)
 	g := &Game{
 		ui:            &ui,
 		drgPoint:      nil,
 		forceRerender: false,
 	}
 	conToBezierBut := NewButton("Convert to bezier curves", func() {
-		if g.spline != nil {
-			g.spline = g.spline.ToBeziers()
+		if g.spline.curve != nil {
+			g.spline.curve = g.spline.curve.ToBeziers()
 			g.forceRerender = true
 		}
 	})
 	rightContainer.AddChild(conToBezierBut)
 
-	// var uText *widget.Label
-	// uSlider := NewSlider(0, 100, 1, func(args *widget.SliderChangedEventArgs) {
-	// 	uText.Label = fmt.Sprintf("%0.2f", float64(args.Current)/100)
-	// })
-	// uText = NewLabel(fmt.Sprintf("%d", uSlider.Current))
-	// rightContainer.AddChild(uSlider)
-	// rightContainer.AddChild(uText)
+	var uText *widget.Label
+	uSlider := NewSlider(0, 100, 1, func(args *widget.SliderChangedEventArgs) {
+		uText.Label = fmt.Sprintf("%0.2f", float64(args.Current)/100)
+		g.forceRerender = true
+		g.spline.u = float64(args.Current) / 100
+	})
+	uText = NewLabel(fmt.Sprintf("%d", uSlider.Current))
+	// println(uText.Label)
+	rightContainer.AddChild(uSlider)
+	rightContainer.AddChild(uText)
 	rootContainer.AddChild(rightContainer)
 
 	return g
