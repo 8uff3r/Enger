@@ -5,13 +5,24 @@ import (
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/gofont/goregular"
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"image/color"
 )
+
+const (
+	fontFaceRegular = "assets/fonts/VisbyRoundCF-Regular.otf"
+	fontFaceBold    = "assets/fonts/VisbyRoundCF-Bold.otf"
+)
+
+type fonts struct {
+	face         font.Face
+	titleFace    font.Face
+	bigTitleFace font.Face
+	toolTipFace  font.Face
+}
 
 func loadButtonImage() (*widget.ButtonImage, error) {
 	idle := image.NewNineSliceColor(color.RGBA{R: 0, G: 0, B: 20, A: 255})
@@ -27,8 +38,41 @@ func loadButtonImage() (*widget.ButtonImage, error) {
 	}, nil
 }
 
-func loadFont(size float64) (font.Face, error) {
-	ttfFont, err := truetype.Parse(goregular.TTF)
+func loadFonts() (*fonts, error) {
+	fontFace, err := loadFont(fontFaceRegular, 20)
+	if err != nil {
+		return nil, err
+	}
+
+	titleFontFace, err := loadFont(fontFaceBold, 24)
+	if err != nil {
+		return nil, err
+	}
+
+	bigTitleFontFace, err := loadFont(fontFaceBold, 28)
+	if err != nil {
+		return nil, err
+	}
+
+	toolTipFace, err := loadFont(fontFaceRegular, 15)
+	if err != nil {
+		return nil, err
+	}
+
+	return &fonts{
+		face:         fontFace,
+		titleFace:    titleFontFace,
+		bigTitleFace: bigTitleFontFace,
+		toolTipFace:  toolTipFace,
+	}, nil
+}
+func loadFont(path string, size float64) (font.Face, error) {
+	fontData, err := embeddedAssets.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	ttfFont, err := truetype.Parse(fontData)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +117,11 @@ func loadImageNineSlice(path string, centerWidth int, centerHeight int) (*image.
 	if err != nil {
 		return nil, err
 	}
-	// w := i.Bounds().Dx()
-	// h := i.Bounds().Dy()
+	w := i.Bounds().Dx()
+	h := i.Bounds().Dy()
 	return image.NewNineSlice(i,
-			[3]int{50, 50, 50},
-			[3]int{8, 8, 8}),
+			[3]int{(w - centerWidth) / 2, centerWidth, w - (w-centerWidth)/2 - centerWidth},
+			[3]int{(h - centerHeight) / 2, centerHeight, h - (h-centerHeight)/2 - centerHeight}),
 		nil
 }
 

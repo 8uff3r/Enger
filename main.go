@@ -44,15 +44,22 @@ const (
 type Game struct {
 	spline         ts.BSpline
 	drgPoint       *draggedCtrlPoint
-	vertices       []ebiten.Vertex
-	indices        []uint16
-	ctrlPoints     [][2]int
-	pastCtrlPoints [][2]int
 	ui             *ebitenui.UI
+	uPoint         *Point
+	pastCtrlPoints [][2]int
+	ctrlPoints     [][2]int
+	indices        []uint16
 	vs             []ebiten.Vertex
 	is             []uint16
+	extraPts       []float64
+	vertices       []ebiten.Vertex
 	counter        int
 	forceRerender  bool
+}
+type Point struct {
+	x  float64
+	y  float64
+	ch bool
 }
 type draggedCtrlPoint struct {
 	index      int
@@ -143,6 +150,27 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		reRender = true
 	} else if x != 0 && y != 0 && isReleased {
 		g.ctrlPoints = append(g.ctrlPoints, [2]int{x, y})
+		if g.spline != nil {
+			knts := g.spline.GetKnots()
+			var res []int
+			for k, v := range knts {
+				if k < g.spline.GetDegree() || k > len(knts)-g.spline.GetDegree()-1 {
+					continue
+				}
+				res = append(res, int(v*float64((len(knts)-2*g.spline.GetDegree())-1)))
+
+			}
+
+			// res := g.spline.ToBeziers()
+			// res, _ := GetPointAt(g.spline, .1)
+			// g.extraPts = append(g.extraPts, pts...)
+			pts, _ := GetPointAt(g.spline, 0.2*knts[5])
+			fmt.Printf("pts: %v\n", pts)
+			SetPoint(&g.uPoint, pts[0], pts[1])
+
+			// g.extraPts = res
+			fmt.Printf("%v\n", g.uPoint.GetPoint())
+		}
 		g.DrawNewSpline(target, g.ctrlPoints)
 		reRender = true
 	}
@@ -152,15 +180,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	curveScene.Clear()
+	g.AddPointByFlatList(target, g.extraPts, 9, color.RGBA{G: 255})
 
 	for _, v := range g.ctrlPoints {
-		g.AddPointAt(target, v[0], v[1], 6)
+		g.AddPointAt(target, v[0], v[1], 6, color.White)
 	}
 	g.drawLineByPoints(target, g.ctrlPoints)
 	if len(g.ctrlPoints) < 4 {
 		return
 	}
-	g.drawSpline(target, g.spline.Sample())
+	ptsNum := 100 * (len(g.ctrlPoints) / 5)
+	g.drawSpline(target, g.spline.Sample(ptsNum))
 	g.ui.Draw(screen)
 
 	msg := fmt.Sprintf(`Press A to switch anti-aliasing.
@@ -174,6 +204,17 @@ X: %d, Y: %d
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
+}
+func (p *Point) GetPoint() *Point {
+	p.ch = false
+	return p
+}
+func SetPoint(p **Point, x, y float64) {
+	*p = &Point{
+		x:  x,
+		y:  y,
+		ch: true,
+	}
 }
 
 func (g *Game) MoveCtrlPoint(target *ebiten.Image, p *draggedCtrlPoint, x, y int) {
@@ -273,8 +314,17 @@ func (g *Game) drawLineByPoints(target *ebiten.Image, input [][2]int) {
 
 }
 
-func (g *Game) AddPointAt(target *ebiten.Image, x, y, r int) {
-	vector.DrawFilledCircle(target, float32(x), float32(y), float32(r), color.White, true)
+func (g *Game) AddPointByFlatList(target *ebiten.Image, pts []float64, r int, color color.Color) {
+	for k := range pts {
+		if k%2 == 1 {
+			continue
+		}
+		g.AddPointAt(target, int(pts[k]), int(pts[k+1]), r, color)
+
+	}
+}
+func (g *Game) AddPointAt(target *ebiten.Image, x, y, r int, color color.Color) {
+	vector.DrawFilledCircle(target, float32(x), float32(y), float32(r), color, true)
 }
 func (g *Game) clickPos() (int, int) {
 	isReleased := inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
@@ -316,38 +366,16 @@ func NewGame() *Game {
 		),
 		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.NRGBA{0x40, 0x1a, 0x22, 0xff})),
 		// the container will use an anchor layout to layout its single child widget
-		widget.ContainerOpts.Layout(widget.NewAnchorLayout()),
+
+		widget.ContainerOpts.Layout(widget.NewAnchorLayout(
+			widget.AnchorLayoutOpts.Padding(widget.Insets{
+				Left:   10,
+				Right:  10,
+				Top:    10,
+				Bottom: 10,
+			}),
+		)),
 	)
-
-	idle, err := loadImageNineSlice("assets/button-idle.png", 12, 0)
-	if err != nil {
-		return nil
-	}
-
-	hover, err := loadImageNineSlice("assets/button-hover.png", 12, 0)
-	if err != nil {
-		return nil
-	}
-	pressed_hover, err := loadImageNineSlice("assets/button-selected-hover.png", 12, 0)
-	if err != nil {
-		return nil
-	}
-	pressed, err := loadImageNineSlice("assets/button-pressed.png", 12, 0)
-	if err != nil {
-		return nil
-	}
-	disabled, err := loadImageNineSlice("assets/button-disabled.png", 12, 0)
-	if err != nil {
-		return nil
-	}
-	buttonImage := &widget.ButtonImage{
-		Idle:         idle,
-		Hover:        hover,
-		Pressed:      pressed,
-		PressedHover: pressed_hover,
-		Disabled:     disabled,
-	}
-	face, _ := loadFont(12)
 
 	ui := ebitenui.UI{
 		Container: rootContainer,
@@ -358,44 +386,31 @@ func NewGame() *Game {
 		drgPoint:      nil,
 		forceRerender: false,
 	}
-	conToBezierBut := widget.NewButton(
-		// set general widget options
-		widget.ButtonOpts.WidgetOpts(
-			// instruct the container's anchor layout to center the button both horizontally and vertically
-			widget.WidgetOpts.LayoutData(widget.AnchorLayoutData{
-				HorizontalPosition: widget.AnchorLayoutPositionCenter,
-				VerticalPosition:   widget.AnchorLayoutPositionCenter,
-			}),
-		),
-
-		widget.ButtonOpts.Image(buttonImage),
-		widget.ButtonOpts.Text("Convert to bezier curves", face, &widget.ButtonTextColor{
-			Idle: color.NRGBA{0xdf, 0xf4, 0xff, 0xff},
-		}),
-		widget.ButtonOpts.GraphicPadding(widget.Insets{
-			Left:  30,
-			Right: 30,
-		}),
-
-		// specify that the button's text needs some padding for correct display
-		widget.ButtonOpts.TextPadding(widget.Insets{
-			Left:   30,
-			Right:  30,
-			Top:    5,
-			Bottom: 5,
-		}),
-		// add a handler that reacts to clicking the button
-		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
-			if g.spline != nil {
-				g.spline = g.spline.ToBeziers()
-				g.forceRerender = true
-			}
-		}),
-	)
+	conToBezierBut := NewButton("Convert to bezier curves", func() {
+		if g.spline != nil {
+			g.spline = g.spline.ToBeziers()
+			g.forceRerender = true
+		}
+	})
 	rightContainer.AddChild(conToBezierBut)
+
+	// var uText *widget.Label
+	// uSlider := NewSlider(0, 100, 1, func(args *widget.SliderChangedEventArgs) {
+	// 	uText.Label = fmt.Sprintf("%0.2f", float64(args.Current)/100)
+	// })
+	// uText = NewLabel(fmt.Sprintf("%d", uSlider.Current))
+	// rightContainer.AddChild(uSlider)
+	// rightContainer.AddChild(uText)
 	rootContainer.AddChild(rightContainer)
 
 	return g
+}
+func GetPointAt(spline ts.BSpline, u float64) ([]float64, []float64) {
+	net := spline.Eval(u)
+	pts := net.GetPoints()
+	res := net.GetResult()
+	// fmt.Printf("pts: %v, res: %v\n\n", pts, res)
+	return res, pts
 }
 
 func main() {
