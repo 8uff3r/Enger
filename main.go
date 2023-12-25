@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"log"
 	"math"
+	"strconv"
 
 	"github.com/ebitenui/ebitenui"
 	"github.com/ebitenui/ebitenui/image"
@@ -53,6 +54,7 @@ type Spline struct {
 	uPoint     *Point
 	ctrlPoints [][2]int
 	u          float64
+	knotIndex  int
 	re         bool
 }
 type Point struct {
@@ -177,7 +179,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			res = append(res, int(v*float64((len(knts)-2*g.spline.curve.GetDegree())-1)))
 		}
-		pts, _ := GetPointAt(g.spline.curve, g.spline.u*knts[5])
+		if g.spline.knotIndex+4 > len(knts)-1 {
+			return
+		}
+		u := g.spline.u*knts[3+g.spline.knotIndex] + knts[g.spline.knotIndex+2]
+		if u > 1 {
+			u = 1
+		}
+		pts, _ := GetPointAt(g.spline.curve, u)
 		SetPoint(&g.spline.uPoint, pts[0], pts[1])
 		g.AddPointAt(target, int(pts[0]), int(pts[1]), 12, color.RGBA{G: 255})
 		fmt.Printf("%v\n", g.spline.uPoint.GetPoint())
@@ -363,6 +372,7 @@ func NewGame() *Game {
 		widget.ContainerOpts.Layout(widget.NewRowLayout(
 			widget.RowLayoutOpts.Direction(widget.DirectionVertical),
 			widget.RowLayoutOpts.Padding(widget.NewInsetsSimple(10)),
+			widget.RowLayoutOpts.Spacing(10),
 		)),
 	)
 
@@ -388,8 +398,17 @@ func NewGame() *Game {
 		g.forceRerender = true
 		g.spline.u = float64(args.Current) / 100
 	})
+	uInput := NewInput("Knot index", func(args *widget.TextInputChangedEventArgs) {
+		parsed, err := strconv.Atoi(args.InputText)
+		if err != nil {
+			return
+		}
+		g.spline.knotIndex = parsed
+		g.spline.u = 0
+	})
 	uText = NewLabel(fmt.Sprintf("%d", uSlider.Current))
 	// println(uText.Label)
+	rightContainer.AddChild(uInput)
 	rightContainer.AddChild(uSlider)
 	rightContainer.AddChild(uText)
 	rootContainer.AddChild(rightContainer)
