@@ -149,16 +149,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		reRender = true
 	} else if x != 0 && y != 0 && isReleased {
 		g.spline.ctrlPoints = append(g.spline.ctrlPoints, [2]int{x, y})
-		g.DrawNewSpline(target, g.spline.ctrlPoints)
+		g.NewSpline(target, g.spline.ctrlPoints)
 		reRender = true
 	}
 	if !reRender {
 		return
 	}
-	println("RERE")
-
 	curveScene.Clear()
-	g.AddPointByFlatList(target, g.extraPts, 9, color.RGBA{G: 255})
+	g.AddPointByFlatList(target, g.extraPts, 3, color.RGBA{R: 255})
 
 	for _, v := range g.spline.ctrlPoints {
 		g.AddPointAt(target, v[0], v[1], 6, color.White)
@@ -174,6 +172,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		knts := g.spline.curve.GetKnots()
 		var res []int
 		for k, v := range knts {
+			knt, _ := GetPointAt(g.spline.curve, v)
+			g.AddPointAt(target, int(knt[0]), int(knt[1]), 3, color.RGBA{R: 255})
 			if k < g.spline.curve.GetDegree() || k > len(knts)-g.spline.curve.GetDegree()-1 {
 				continue
 			}
@@ -182,7 +182,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if g.spline.knotIndex+4 > len(knts)-1 {
 			return
 		}
-		u := g.spline.u*knts[3+g.spline.knotIndex] + knts[g.spline.knotIndex+2]
+		// u := g.spline.u*knts[3+g.spline.knotIndex] + knts[g.spline.knotIndex+2]
+		u := g.spline.u*(knts[3+g.spline.knotIndex]-knts[g.spline.knotIndex+2]) + knts[g.spline.knotIndex+2]
 		if u > 1 {
 			u = 1
 		}
@@ -235,7 +236,7 @@ func (s *Spline) MoveCtrlPoint(p *draggedCtrlPoint, x, y int) {
 	s.curve.SetControlPointVec2At(p.index, ts.NewVec2(float64(x), float64(y)))
 }
 
-func (g *Game) DrawNewSpline(target *ebiten.Image, inpts [][2]int) {
+func (g *Game) NewSpline(target *ebiten.Image, inpts [][2]int) {
 	var flatInpts []float64
 	for _, a := range inpts {
 		flatInpts = append(flatInpts, []float64{float64(a[0]), float64(a[1])}...)
