@@ -50,6 +50,7 @@ type Game struct {
 	forceRerender bool
 }
 type Spline struct {
+	degree     int
 	curve      ts.BSpline
 	uPoint     *Point
 	ctrlPoints [][2]int
@@ -244,7 +245,7 @@ func (g *Game) NewSpline(target *ebiten.Image, inpts [][2]int) {
 	if len(inpts) < 4 {
 		return
 	}
-	g.spline.curve = ts.NewBSpline(len(inpts), 2, 3)
+	g.spline.curve = ts.NewBSpline(len(inpts), 2)
 	g.spline.curve.SetControlPoints(flatInpts)
 }
 
@@ -385,13 +386,13 @@ func NewGame() *Game {
 		drgPoint:      nil,
 		forceRerender: false,
 	}
+	g.spline.degree = 2
 	conToBezierBut := NewButton("Convert to bezier curves", func() {
 		if g.spline.curve != nil {
 			g.spline.curve = g.spline.curve.ToBeziers()
 			g.forceRerender = true
 		}
 	})
-	rightContainer.AddChild(conToBezierBut)
 
 	var uText *widget.Label
 	uSlider := NewSlider(0, 100, 1, func(args *widget.SliderChangedEventArgs) {
@@ -408,7 +409,25 @@ func NewGame() *Game {
 		g.spline.u = 0
 	})
 	uText = NewLabel(fmt.Sprintf("%d", uSlider.Current))
-	// println(uText.Label)
+
+	degreeInput := NewInput("Degree", func(args *widget.TextInputChangedEventArgs) {
+		parsed, err := strconv.Atoi(args.InputText)
+		if err != nil {
+			return
+		}
+		g.spline.degree = parsed
+	})
+
+	clearButton := NewButton("Clear scene", func() {
+		g.spline.curve = nil
+		g.spline.uPoint = nil
+		g.spline.ctrlPoints = nil
+		g.spline.re = true
+		g.forceRerender = true
+	})
+	rightContainer.AddChild(clearButton)
+	rightContainer.AddChild(conToBezierBut)
+	rightContainer.AddChild(degreeInput)
 	rightContainer.AddChild(uInput)
 	rightContainer.AddChild(uSlider)
 	rightContainer.AddChild(uText)
