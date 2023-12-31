@@ -61,6 +61,7 @@ func NewButton(txt string, handler func()) *widget.Button {
 			// instruct the container's anchor layout to center the button both horizontally and vertically
 			widget.WidgetOpts.LayoutData(widget.RowLayoutData{
 				Position: widget.RowLayoutPositionStart,
+				Stretch:  true,
 			}),
 		),
 

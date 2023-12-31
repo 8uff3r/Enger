@@ -50,10 +50,10 @@ type Game struct {
 	forceRerender bool
 }
 type Spline struct {
-	degree     int
 	curve      ts.BSpline
 	uPoint     *Point
 	ctrlPoints [][2]int
+	degree     int
 	u          float64
 	knotIndex  int
 	re         bool
@@ -123,9 +123,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.spline.re = false
 	if isPressed {
+		var drgPoint *draggedCtrlPoint
 		for k, v := range g.spline.ctrlPoints {
 			if In(v[0], v[1], x, y, 6) {
-				g.drgPoint = &draggedCtrlPoint{
+				drgPoint = &draggedCtrlPoint{
 					index:      k,
 					x:          v[0],
 					y:          v[1],
@@ -134,6 +135,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 				break
 			}
+		}
+		// FIXME:
+		if g.drgPoint == drgPoint {
+			g.drgPoint = nil
+		} else {
+			g.drgPoint = drgPoint
 		}
 		return
 	}
@@ -163,7 +170,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.AddPointAt(target, v[0], v[1], 6, color.White)
 	}
 	g.drawLineByPoints(target, g.spline.ctrlPoints)
-	if len(g.spline.ctrlPoints) < 4 {
+	if len(g.spline.ctrlPoints) < g.spline.degree+1 {
 		return
 	}
 	ptsNum := 100 * (len(g.spline.ctrlPoints) / 5)
@@ -180,11 +187,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			res = append(res, int(v*float64((len(knts)-2*g.spline.curve.GetDegree())-1)))
 		}
-		if g.spline.knotIndex+4 > len(knts)-1 {
+		if g.spline.knotIndex+g.spline.degree+1 > len(knts)-1 {
 			return
 		}
 		// u := g.spline.u*knts[3+g.spline.knotIndex] + knts[g.spline.knotIndex+2]
-		u := g.spline.u*(knts[3+g.spline.knotIndex]-knts[g.spline.knotIndex+2]) + knts[g.spline.knotIndex+2]
+		u := g.spline.u*(knts[g.spline.degree+g.spline.knotIndex]-knts[g.spline.knotIndex+g.spline.degree-1]) + knts[g.spline.knotIndex+g.spline.degree-1]
 		if u > 1 {
 			u = 1
 		}
@@ -226,12 +233,12 @@ func SetPoint(p **Point, x, y float64) {
 }
 
 func (s *Spline) MoveCtrlPoint(p *draggedCtrlPoint, x, y int) {
-	if x == 0 && y == 0 {
+	if x == 0 && y == 0 || s.curve == nil {
 		return
 	}
 	s.ctrlPoints[p.index][0] = x
 	s.ctrlPoints[p.index][1] = y
-	if len(s.ctrlPoints) < 4 {
+	if len(s.ctrlPoints) < s.degree+1 {
 		return
 	}
 	s.curve.SetControlPointVec2At(p.index, ts.NewVec2(float64(x), float64(y)))
@@ -242,10 +249,10 @@ func (g *Game) NewSpline(target *ebiten.Image, inpts [][2]int) {
 	for _, a := range inpts {
 		flatInpts = append(flatInpts, []float64{float64(a[0]), float64(a[1])}...)
 	}
-	if len(inpts) < 4 {
+	if len(inpts) < g.spline.degree+1 {
 		return
 	}
-	g.spline.curve = ts.NewBSpline(len(inpts), 2)
+	g.spline.curve = ts.NewBSpline(len(inpts), 2, g.spline.degree)
 	g.spline.curve.SetControlPoints(flatInpts)
 }
 
