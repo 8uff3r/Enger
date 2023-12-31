@@ -343,7 +343,6 @@ func NewGame() *Game {
 		),
 	)
 	rootContainer.AddChild(curvesContainer)
-
 	rightContainer := widget.NewContainer(
 		widget.ContainerOpts.WidgetOpts(
 			widget.WidgetOpts.MinSize(100, 600),
