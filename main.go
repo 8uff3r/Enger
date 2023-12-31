@@ -56,12 +56,10 @@ type Spline struct {
 	degree     int
 	u          float64
 	knotIndex  int
-	re         bool
 }
 type Point struct {
-	x  float64
-	y  float64
-	ch bool
+	x float64
+	y float64
 }
 type draggedCtrlPoint struct {
 	index      int
@@ -96,32 +94,15 @@ func FlatFloatTo2dInt(s []float64) [][2]int {
 	return result
 }
 
+var isReleased, isPressed, reRender bool
+
 func (g *Game) Update() error {
-	// g.counter++
 	g.ui.Update()
 
-	return nil
-}
-
-var curveScene *ebiten.Image
-
-func (g *Game) Draw(screen *ebiten.Image) {
-	defer g.ui.Draw(screen)
-	target := curveScene
-
-	isPressed := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
-	isReleased := inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
 	x, y := ebiten.CursorPosition()
-	if x > .75*screenWidth {
-		isReleased = false
-		isPressed = false
-	}
+	isPressed = inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
+	isReleased = inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
 
-	if g.spline.curve != nil {
-		g.spline.ctrlPoints = FlatFloatTo2dInt(g.spline.curve.GetControlPoints())
-	}
-
-	g.spline.re = false
 	if isPressed {
 		var drgPoint *draggedCtrlPoint
 		for k, v := range g.spline.ctrlPoints {
@@ -142,24 +123,41 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		} else {
 			g.drgPoint = drgPoint
 		}
-		return
+		println("Pressed")
 	}
-	if isReleased {
-		if g.drgPoint != nil {
-			g.drgPoint = nil
-			return
-		}
+	if x > .75*screenWidth {
+		isReleased = false
+		isPressed = false
 	}
-	reRender := g.forceRerender
+
+	reRender = g.forceRerender
 	g.forceRerender = false
 	if g.drgPoint != nil {
 		g.spline.MoveCtrlPoint(g.drgPoint, x, y)
 		reRender = true
 	} else if x != 0 && y != 0 && isReleased {
 		g.spline.ctrlPoints = append(g.spline.ctrlPoints, [2]int{x, y})
-		g.NewSpline(target, g.spline.ctrlPoints)
+		g.NewSpline(g.spline.ctrlPoints)
 		reRender = true
 	}
+	if isReleased {
+		if g.drgPoint != nil {
+			g.drgPoint = nil
+		}
+		println("Released")
+	}
+	if g.spline.curve != nil {
+		g.spline.ctrlPoints = FlatFloatTo2dInt(g.spline.curve.GetControlPoints())
+	}
+	return nil
+}
+
+var curveScene *ebiten.Image
+
+func (g *Game) Draw(screen *ebiten.Image) {
+	defer g.ui.Draw(screen)
+	target := curveScene
+
 	if !reRender {
 		return
 	}
@@ -178,19 +176,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.spline.curve != nil {
 		knts := g.spline.curve.GetKnots()
-		var res []int
-		for k, v := range knts {
-			knt, _ := GetPointAt(g.spline.curve, v)
-			g.AddPointAt(target, int(knt[0]), int(knt[1]), 3, color.RGBA{R: 255})
-			if k < g.spline.curve.GetDegree() || k > len(knts)-g.spline.curve.GetDegree()-1 {
-				continue
-			}
-			res = append(res, int(v*float64((len(knts)-2*g.spline.curve.GetDegree())-1)))
-		}
 		if g.spline.knotIndex+g.spline.degree+1 > len(knts)-1 {
 			return
 		}
-		// u := g.spline.u*knts[3+g.spline.knotIndex] + knts[g.spline.knotIndex+2]
 		u := g.spline.u*(knts[g.spline.degree+g.spline.knotIndex]-knts[g.spline.knotIndex+g.spline.degree-1]) + knts[g.spline.knotIndex+g.spline.degree-1]
 		if u > 1 {
 			u = 1
@@ -198,37 +186,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		pts, _ := GetPointAt(g.spline.curve, u)
 		SetPoint(&g.spline.uPoint, pts[0], pts[1])
 		g.AddPointAt(target, int(pts[0]), int(pts[1]), 12, color.RGBA{G: 255})
-		fmt.Printf("%v\n", g.spline.uPoint.GetPoint())
 	}
 	if g.spline.uPoint != nil {
-		g.spline.uPoint.ch = false
 		g.AddPointAt(target, int(g.spline.uPoint.x), int(g.spline.uPoint.y), 10, color.RGBA{B: 255})
 	}
-	//	msg := fmt.Sprintf(`Press A to switch anti-aliasing.
-	//
-	// Press C to switch to draw the center lines
-	// X: %d, Y: %d
-	// %v
-	//
-	//	%v
-	//
-	// `, x, y, (g.spline.ctrlPoints), g.drgPoint)
-	//
-	//	ebitenutil.DebugPrint(target, msg)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
 }
 func (p *Point) GetPoint() *Point {
-	p.ch = false
 	return p
 }
 func SetPoint(p **Point, x, y float64) {
 	*p = &Point{
-		x:  x,
-		y:  y,
-		ch: true,
+		x: x,
+		y: y,
 	}
 }
 
@@ -244,7 +217,7 @@ func (s *Spline) MoveCtrlPoint(p *draggedCtrlPoint, x, y int) {
 	s.curve.SetControlPointVec2At(p.index, ts.NewVec2(float64(x), float64(y)))
 }
 
-func (g *Game) NewSpline(target *ebiten.Image, inpts [][2]int) {
+func (g *Game) NewSpline(inpts [][2]int) {
 	var flatInpts []float64
 	for _, a := range inpts {
 		flatInpts = append(flatInpts, []float64{float64(a[0]), float64(a[1])}...)
@@ -429,7 +402,6 @@ func NewGame() *Game {
 		g.spline.curve = nil
 		g.spline.uPoint = nil
 		g.spline.ctrlPoints = nil
-		g.spline.re = true
 		g.forceRerender = true
 	})
 	rightContainer.AddChild(clearButton)
@@ -446,13 +418,12 @@ func GetPointAt(spline ts.BSpline, u float64) ([]float64, []float64) {
 	net := spline.Eval(u)
 	pts := net.GetPoints()
 	res := net.GetResult()
-	// fmt.Printf("pts: %v, res: %v\n\n", pts, res)
 	return res, pts
 }
 
 func main() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Lines (Ebitengine Demo)")
+	ebiten.SetWindowTitle("Curver")
 	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
 	}
