@@ -36,3 +36,4 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "curver,curver.exe"
+          token: ${{ secrets.GITHUB_TOKEN }}
