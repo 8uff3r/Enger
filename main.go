@@ -174,19 +174,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ptsNum := 100 * (len(g.spline.ctrlPoints) / 5)
 	g.drawSpline(target, g.spline.curve.Sample(ptsNum))
 
-	if g.spline.curve != nil {
-		knts := g.spline.curve.GetKnots()
-		if g.spline.knotIndex+g.spline.degree+1 > len(knts)-1 {
-			return
-		}
-		u := g.spline.u*(knts[g.spline.degree+g.spline.knotIndex]-knts[g.spline.knotIndex+g.spline.degree-1]) + knts[g.spline.knotIndex+g.spline.degree-1]
-		if u > 1 {
-			u = 1
-		}
-		pts, _ := GetPointAt(g.spline.curve, u)
-		SetPoint(&g.spline.uPoint, pts[0], pts[1])
-		g.AddPointAt(target, int(pts[0]), int(pts[1]), 12, color.RGBA{G: 255})
+	if g.spline.curve == nil {
+		return
 	}
+	knts := g.spline.curve.GetKnots()
+	if g.spline.knotIndex+g.spline.degree+1 > len(knts)-1 {
+		return
+	}
+	u := g.spline.u*(knts[g.spline.degree+g.spline.knotIndex]-knts[g.spline.knotIndex+g.spline.degree-1]) + knts[g.spline.knotIndex+g.spline.degree-1]
+	if u > 1 {
+		u = 1
+	}
+	pts, _ := GetPointAt(g.spline.curve, u)
+	SetPoint(&g.spline.uPoint, pts[0], pts[1])
+	g.AddPointAt(target, int(pts[0]), int(pts[1]), 12, color.RGBA{G: 255})
+
 	if g.spline.uPoint != nil {
 		g.AddPointAt(target, int(g.spline.uPoint.x), int(g.spline.uPoint.y), 10, color.RGBA{B: 255})
 	}
